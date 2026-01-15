@@ -1,11 +1,13 @@
 import streamlit as st
 import os
+import io
+import zipfile
 
 st.set_page_config(page_title="CSV / TSV Splitter", layout="centered")
 
 st.title("CSV / TSV Splitter")
-st.write("Split large CSV / TSV files by **rows** or **file size (MB)**")
-st.write("Japanese (CP932 / Shift-JIS / UTF-8) supported")
+st.write("Split large CSV / TSV files by rows or file size (MB)")
+st.write("Japanese (UTF-8 / CP932 / Shift-JIS) supported")
 
 # ================= Encoding detection =================
 def detect_encoding(file_bytes):
@@ -74,6 +76,15 @@ def split_by_size(file_bytes, max_mb, filename):
 
     return parts, encoding
 
+# ================= ZIP creator =================
+def create_zip(parts):
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for filename, data in parts:
+            zipf.writestr(filename, data)
+    zip_buffer.seek(0)
+    return zip_buffer
+
 # ================= UI =================
 uploaded_file = st.file_uploader(
     "Upload CSV / TSV file",
@@ -107,15 +118,11 @@ if uploaded_file:
         with st.spinner("Processing..."):
             if split_mode == "By rows":
                 parts, enc = split_by_rows(
-                    file_bytes,
-                    rows,
-                    uploaded_file.name
+                    file_bytes, rows, uploaded_file.name
                 )
             else:
                 parts, enc = split_by_size(
-                    file_bytes,
-                    max_mb,
-                    uploaded_file.name
+                    file_bytes, max_mb, uploaded_file.name
                 )
 
         st.success(
@@ -123,6 +130,21 @@ if uploaded_file:
             f"(Encoding preserved: {enc})"
         )
 
+        # ===== ZIP DOWNLOAD (ONE CLICK) =====
+        zip_buffer = create_zip(parts)
+        zip_name = f"{os.path.splitext(uploaded_file.name)[0]}_split.zip"
+
+        st.download_button(
+            label="⬇️ Download ALL files (ZIP)",
+            data=zip_buffer,
+            file_name=zip_name,
+            mime="application/zip"
+        )
+
+        st.divider()
+
+        # ===== Optional individual downloads =====
+        st.caption("Download individual files:")
         for name, data in parts:
             st.download_button(
                 label=f"Download {name}",
